@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* App baseline */
+html, body, #root {
+  height: 100%;
+}
+

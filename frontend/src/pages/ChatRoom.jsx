@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '../utils/api.js'
 import { getSocket } from '../utils/socket.js'
+import { useAuthStore } from '../store/auth.js'
 
 export default function ChatRoom() {
   const { id } = useParams()
+  const user = useAuthStore(s => s.user)
   const [messages, setMessages] = useState([])
   const [content, setContent] = useState('')
   const [typing, setTyping] = useState(false)
@@ -33,14 +35,21 @@ export default function ChatRoom() {
       if (roomId !== id) return
       setMessages(prev => [...prev, message])
     }
+    // message sent (echo to sender)
+    const onSent = ({ message, roomId }) => {
+      if (roomId !== id) return
+      setMessages(prev => [...prev, message])
+    }
     const onTypingStart = ({ roomId }) => { if (roomId === id) setTyping(true) }
     const onTypingStop = ({ roomId }) => { if (roomId === id) setTyping(false) }
 
     socket.on('message:receive', onReceive)
+    socket.on('message:sent', onSent)
     socket.on('typing:start', onTypingStart)
     socket.on('typing:stop', onTypingStop)
     return () => {
       socket.off('message:receive', onReceive)
+      socket.off('message:sent', onSent)
       socket.off('typing:start', onTypingStart)
       socket.off('typing:stop', onTypingStop)
     }
@@ -72,12 +81,17 @@ export default function ChatRoom() {
       <div className="card bg-base-200">
         <div className="card-body gap-3">
           <div className="min-h-64 max-h-[60vh] overflow-y-auto space-y-2">
-            {messages.map(m => (
-              <div key={m._id} className="chat">
-                <div className={`chat-bubble ${m.type==='system'?'chat-bubble-info':''}`}>{m.content}</div>
-                <div className="chat-footer opacity-70 text-xs">{new Date(m.createdAt).toLocaleTimeString()}</div>
-              </div>
-            ))}
+            {messages.map(m => {
+              const mine = m?.sender?._id && user?._id && (m.sender._id===user._id)
+              return (
+                <div key={m._id} className={`chat ${mine ? 'chat-end' : 'chat-start'}`}>
+                  <div className={`chat-bubble ${mine ? 'chat-bubble-primary' : ''} ${m.type==='system'?'chat-bubble-info':''}`}>{m.content}</div>
+                  <div className="chat-footer opacity-70 text-xs">
+                    {new Date(m.createdAt).toLocaleTimeString()}
+                  </div>
+                </div>
+              )
+            })}
           </div>
           {typing && <div className="text-xs opacity-70">Typing...</div>}
           <div className="join w-full">

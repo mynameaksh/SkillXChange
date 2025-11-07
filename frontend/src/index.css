@@ -6,3 +6,9 @@ html, body, #root {
   height: 100%;
 }
 
+/* Subtle background gradient for the whole app */
+body {
+  background-image: radial-gradient(1200px 600px at 20% -10%, color-mix(in oklab, var(--p) 8%, transparent), transparent),
+    radial-gradient(1000px 500px at 120% 0%, color-mix(in oklab, var(--s) 6%, transparent), transparent);
+}
+

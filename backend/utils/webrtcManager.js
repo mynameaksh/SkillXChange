@@ -67,42 +67,57 @@ class WebRTCManager {
 
     async handleConnection(socket) {
         try {
+            console.log('WebRTC connection attempt received');
             const { roomId, userId, sessionId } = socket.handshake.query;
+            console.log('WebRTC connection params:', { roomId, userId, sessionId });
 
             // Verify session and permissions
             const session = await Session.findById(sessionId);
             if (!session) {
+                console.log('WebRTC error: Session not found');
                 socket.emit('error', { message: 'Session not found' });
                 return socket.disconnect();
             }
+            console.log('Session found:', session._id);
 
             const videoRoom = await VideoRoom.findOne({ sessionId });
             if (!videoRoom || !videoRoom.canUserJoin(userId)) {
+                console.log('WebRTC error: Not authorized to join this room');
                 socket.emit('error', { message: 'Not authorized to join this room' });
                 return socket.disconnect();
             }
+            console.log('Video room found and user authorized');
 
             // Join room
             socket.join(roomId);
+            console.log('User joined WebRTC room:', roomId);
             
             // Get or create router for this room
             let router;
             if (!this.rooms.has(roomId)) {
+                console.log('Creating new WebRTC router for room:', roomId);
                 router = await this.createRoom(roomId);
             } else {
+                console.log('Using existing WebRTC router for room:', roomId);
                 router = this.rooms.get(roomId).router;
             }
 
             // Handle WebRTC events
             socket.on('getRouterRtpCapabilities', (callback) => {
+                console.log('Received getRouterRtpCapabilities request');
                 callback(router.rtpCapabilities);
             });
 
             socket.on('createWebRtcTransport', async (callback) => {
                 try {
+                    console.log('Received createWebRtcTransport request');
                     const transport = await this.createWebRtcTransport(router);
+                    // tag transport with peer id so we can find it later
+                    transport.appData = transport.appData || {};
+                    transport.appData.peerId = socket.id;
                     this.rooms.get(roomId).transports.set(transport.id, transport);
                     
+                    console.log('Created WebRTC transport:', transport.id);
                     callback({
                         id: transport.id,
                         iceParameters: transport.iceParameters,
@@ -110,22 +125,27 @@ class WebRTCManager {
                         dtlsParameters: transport.dtlsParameters
                     });
                 } catch (error) {
+                    console.log('Error creating WebRTC transport:', error.message);
                     callback({ error: error.message });
                 }
             });
 
             socket.on('connectWebRtcTransport', async ({ transportId, dtlsParameters }, callback) => {
                 try {
+                    console.log('Received connectWebRtcTransport request');
                     const transport = this.rooms.get(roomId).transports.get(transportId);
                     await transport.connect({ dtlsParameters });
+                    console.log('WebRTC transport connected successfully');
                     callback({ success: true });
                 } catch (error) {
+                    console.log('Error connecting WebRTC transport:', error.message);
                     callback({ error: error.message });
                 }
             });
 
             socket.on('produce', async ({ kind, rtpParameters, transportId }, callback) => {
                 try {
+                    console.log('Received produce request');
                     const transport = this.rooms.get(roomId).transports.get(transportId);
                     const producer = await transport.produce({ kind, rtpParameters });
                     
@@ -135,29 +155,33 @@ class WebRTCManager {
                         kind
                     });
                     
+                    console.log('Created producer:', producer.id);
                     callback({ id: producer.id });
                 } catch (error) {
+                    console.log('Error creating producer:', error.message);
                     callback({ error: error.message });
                 }
             });
 
-            socket.on('consume', async ({ producerId, rtpCapabilities }, callback) => {
+            socket.on('consume', async ({ producerId, rtpParameters }, callback) => {
                 try {
+                    console.log('Received consume request');
                     const router = this.rooms.get(roomId).router;
-                    if (!router.canConsume({ producerId, rtpCapabilities })) {
+                    if (!router.canConsume({ producerId, rtpParameters })) {
                         return callback({ error: 'Cannot consume' });
                     }
 
                     // Create consumer
                     const transport = Array.from(this.rooms.get(roomId).transports.values())
-                        .find(t => t.appData.peerId === socket.id);
+                        .find(t => t.appData && t.appData.peerId === socket.id);
                     
                     const consumer = await transport.consume({
                         producerId,
-                        rtpCapabilities,
+                        rtpParameters,
                         paused: true
                     });
 
+                    console.log('Created consumer:', consumer.id);
                     callback({
                         id: consumer.id,
                         producerId,
@@ -165,6 +189,7 @@ class WebRTCManager {
                         rtpParameters: consumer.rtpParameters
                     });
                 } catch (error) {
+                    console.log('Error creating consumer:', error.message);
                     callback({ error: error.message });
                 }
             });
@@ -191,6 +216,7 @@ class WebRTCManager {
             // Handle disconnection
             socket.on('disconnect', async () => {
                 try {
+                    console.log('WebRTC socket disconnected for user:', userId);
                     // Update video room participant status
                     await videoRoom.removeParticipant(userId);
                     
@@ -211,12 +237,12 @@ class WebRTCManager {
 
                     this.io.to(roomId).emit('participantLeft', { userId });
                 } catch (error) {
-                    console.error('Error handling disconnect:', error);
+                    console.error('Error handling WebRTC disconnect:', error);
                 }
             });
 
         } catch (error) {
-            console.error('Error in handleConnection:', error);
+            console.error('Error in WebRTC handleConnection:', error);
             socket.disconnect();
         }
     }

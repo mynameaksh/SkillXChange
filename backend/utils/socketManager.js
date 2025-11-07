@@ -12,22 +12,29 @@ class SocketManager {
 
     async authenticateSocket(socket, next) {
         try {
+            console.log('Authenticating socket...');
             const token = socket.handshake.auth.token?.replace('Bearer ', '');
+            console.log('Token:', token);
             
             if (!token) {
+                console.log('Authentication error: No token provided');
                 return next(new Error('Authentication error'));
             }
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+            console.log('Decoded token:', decoded);
             const user = await User.findById(decoded.id);
             
             if (!user) {
+                console.log('Authentication error: User not found');
                 return next(new Error('User not found'));
             }
 
+            console.log('Socket authenticated successfully for user:', user.email);
             socket.user = user;
             next();
         } catch (error) {
+            console.log('Authentication error:', error.message);
             next(new Error('Authentication error'));
         }
     }
@@ -57,15 +64,18 @@ class SocketManager {
             // Handle private messages
             socket.on('message:send', async (data) => {
                 try {
+                    console.log('Received message:send event with data:', data);
                     const { roomId, content, type = 'text' } = data;
 
                     const room = await ChatRoom.findById(roomId);
                     if (!room) {
+                        console.log('Message error: Chat room not found');
                         throw new Error('Chat room not found');
                     }
 
                     // Verify sender is part of the room
                     if (!room.participants.includes(socket.user._id)) {
+                        console.log('Message error: User not authorized to send messages in this room');
                         throw new Error('Not authorized to send messages in this room');
                     }
 
@@ -73,6 +83,7 @@ class SocketManager {
                     const receiver = room.participants.find(
                         p => p.toString() !== socket.user._id.toString()
                     );
+                    console.log('Receiver:', receiver);
 
                     // Create and save message
                     const message = await Message.create({
@@ -82,6 +93,7 @@ class SocketManager {
                         type
                     });
                     await message.populate('sender', 'name');
+                    console.log('Saved message:', message);
 
                     // Update chat room's last message
                     room.lastMessage = message._id;
@@ -89,17 +101,20 @@ class SocketManager {
                     await room.save();
 
                     // Emit message to room
+                    console.log(`Emitting message:receive to room: ${receiver.toString()}`);
                     this.io.to(receiver.toString()).emit('message:receive', {
                         message,
                         roomId
                     });
 
                     // Emit successful send confirmation
+                    console.log(`Emitting message:sent to socket: ${socket.id}`);
                     socket.emit('message:sent', {
                         message,
                         roomId
                     });
                 } catch (error) {
+                    console.log('Message error:', error.message);
                     socket.emit('message:error', {
                         error: error.message
                     });

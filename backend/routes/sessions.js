@@ -130,9 +130,13 @@ router.get('/:sessionId', auth, async (req, res) => {
             return res.status(404).json({ error: 'Session not found' });
         }
 
-        // Check if user is part of the session
-        if (session.teacher.user._id.toString() !== req.user._id.toString() &&
-            session.learner.user._id.toString() !== req.user._id.toString()) {
+        // Check if user is part of the session (tolerate missing refs)
+        const teacherUserId = (session.teacher && session.teacher.user) ? (session.teacher.user._id || session.teacher.user) : null;
+        const learnerUserId = (session.learner && session.learner.user) ? (session.learner.user._id || session.learner.user) : null;
+        const isMember = [teacherUserId, learnerUserId]
+            .filter(Boolean)
+            .some(u => u.toString() === req.user._id.toString());
+        if (!isMember) {
             return res.status(403).json({ error: 'Not authorized to view this session' });
         }
 
@@ -152,9 +156,13 @@ router.patch('/:sessionId/status', auth, async (req, res) => {
             return res.status(404).json({ error: 'Session not found' });
         }
 
-        // Verify user is part of the session
-        if (session.teacher.user.toString() !== req.user._id.toString() &&
-            session.learner.user.toString() !== req.user._id.toString()) {
+        // Verify user is part of the session (null-safe for unpopulated or missing refs). Tolerate missing refs.
+        const teacherUserId = (session.teacher && session.teacher.user) ? (session.teacher.user._id || session.teacher.user) : null;
+        const learnerUserId = (session.learner && session.learner.user) ? (session.learner.user._id || session.learner.user) : null;
+        const isMember = [teacherUserId, learnerUserId]
+            .filter(Boolean)
+            .some(u => u.toString() === req.user._id.toString());
+        if (!isMember) {
             return res.status(403).json({ error: 'Not authorized to update this session' });
         }
 

@@ -16,9 +16,13 @@ router.post('/', auth, async (req, res) => {
             return res.status(404).json({ error: 'Session not found' });
         }
 
-        // Check if user is part of the session
-        if (session.teacher.user.toString() !== req.user._id.toString() &&
-            session.learner.user.toString() !== req.user._id.toString()) {
+        // Check if user is part of the session (null-safe)
+        const teacherUserId = (session.teacher && session.teacher.user) ? (session.teacher.user._id || session.teacher.user) : null;
+        const learnerUserId = (session.learner && session.learner.user) ? (session.learner.user._id || session.learner.user) : null;
+        const isMember = [teacherUserId, learnerUserId]
+            .filter(Boolean)
+            .some(u => u.toString() === req.user._id.toString());
+        if (!isMember) {
             return res.status(403).json({ error: 'Not authorized to create video room for this session' });
         }
 
@@ -34,10 +38,11 @@ router.post('/', auth, async (req, res) => {
             });
         }
 
-        // Check if room already exists
+        // Check if room already exists (idempotent: return existing room)
         let videoRoom = await VideoRoom.findOne({ sessionId });
         if (videoRoom) {
-            return res.status(400).json({ error: 'Video room already exists for this session' });
+            await videoRoom.populate('participants.userId', 'name');
+            return res.status(200).json(videoRoom);
         }
 
         // Create video room
@@ -45,15 +50,9 @@ router.post('/', auth, async (req, res) => {
             sessionId,
             roomId: uuidv4(),
             participants: [
-                {
-                    userId: session.teacher.user,
-                    role: 'teacher'
-                },
-                {
-                    userId: session.learner.user,
-                    role: 'learner'
-                }
-            ]
+                teacherUserId ? { userId: teacherUserId, role: 'teacher' } : null,
+                learnerUserId ? { userId: learnerUserId, role: 'learner' } : null,
+            ].filter(Boolean)
         });
 
         // Update session status

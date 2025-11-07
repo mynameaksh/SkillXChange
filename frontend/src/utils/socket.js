@@ -5,7 +5,7 @@ let socket = null
 export function getSocket() {
   if (socket && socket.connected) return socket
   const token = localStorage.getItem('token')
-  socket = io(import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000', {
+  socket = io(import.meta.env.VITE_API_BASE_URL || window.location.origin, {
     autoConnect: false,
     transports: ['websocket'],
     auth: { token: token ? `Bearer ${token}` : undefined },
